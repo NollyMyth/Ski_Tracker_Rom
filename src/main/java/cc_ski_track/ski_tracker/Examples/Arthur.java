@@ -39,8 +39,6 @@ public class Arthur {
             -0.5f, -0.5f, 0.0f,   // bottom left
             0.5f, -0.5f, 0.0f,   // bottom right
             0.5f,  0.5f, 0.0f }; // top right
-
-    public volatile float mAngle;
     
     private short drawOrder[] = { 0, 1, 2, 0, 2, 3 }; // order to draw vertices
     private final int vertexStride = COORDS_PER_VERTEX * 4; // 4 bytes per vertex
