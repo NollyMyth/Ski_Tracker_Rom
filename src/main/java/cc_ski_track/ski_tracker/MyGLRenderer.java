@@ -1,13 +1,18 @@
 package cc_ski_track.ski_tracker;
 
+import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.opengl.Matrix;
 
 
+
 import javax.microedition.khronos.opengles.GL10;
 import javax.microedition.khronos.egl.EGLConfig;
 
+import cc_ski_track.ski_tracker.TextureHelper;
 import cc_ski_track.ski_tracker.Examples.Square;
 import cc_ski_track.ski_tracker.Examples.Triangle;
 import cc_ski_track.ski_tracker.Examples.Arthur;
@@ -21,7 +26,12 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
     private final float[] mViewMatrix = new float[16];
     private float[] mRotationMatrix = new float[16];
     public volatile float mAngle;
-
+    /** TEST TEXTURE */
+    private Context context;
+    private int mTextureDataHandle;
+    private int mProgramHandle;
+    private int mTextureCoordinateHandle;
+    /** FIN TEST TEXTURE */
     public void onSurfaceCreated(GL10 unused, EGLConfig config) {
         // Set the background frame color
         GLES20.glClearColor((float)30/255, (float)144/255, 1.0f, 1.0f);
@@ -30,12 +40,19 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
         //Initialisation et load du carré
         mSquare = new Square();
         mArthur = new Arthur();
+        this.context = context;
+        mTextureDataHandle = TextureHelper.loadTexture(context,R.drawable.montagne_nb);
     }
 
-    public void onDrawFrame(GL10 unused) {
+    public void onDrawFrame(GLES20 unused) {
         float[] touche = new float[16];
         // Redraw background color
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
+
+        mTextureCoordinateHandle = GLES20.glGetAttribLocation(mProgramHandle,);
+        GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D,mTextureDataHandle);
+
         // Set the camera position (View matrix)
         Matrix.setLookAtM(mViewMatrix, 0, 0, 0, -3, 0f, 0f, 0f, 0f, 1.0f, 0.0f);
         // Calculate the projection and view transformation
@@ -84,6 +101,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
     public void setAngle(float angle) {
         mAngle = angle;
     }
+
 
 
 }
