@@ -42,9 +42,7 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
         // Redraw background color
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT);
         // Set the camera position (View matrix)
-        Matrix.setLookAtM(mViewMatrix, 0, 0, -5, -3, 0f, 0f, 0f, 0f, 1.0f, 0.0f);
-        // Calculate the projection and view transformation
-        Matrix.multiplyMM(mMVPMatrix, 0, mProjectionMatrix, 0, mViewMatrix, 0);
+        Matrix.setLookAtM(mViewMatrix, 0, 0, -5, -3, 0f, 0f, -0.5f, 0f, 1.0f, 0.0f);
 
         // Create a rotation transformation for the triangle
 
@@ -53,9 +51,12 @@ public class MyGLRenderer implements GLSurfaceView.Renderer {
         // Combine the rotation matrix with the projection and camera view
         // Note that the mMVPMatrix factor *MUST BE FIRST* in order
         // for the matrix multiplication product to be correct.
-        Matrix.multiplyMM(touche, 0, mMVPMatrix, 0, mRotationMatrix, 0);
+//        Matrix.multiplyMM(touche, 0, mMVPMatrix, 0, mRotationMatrix, 0);
+        Matrix.multiplyMM(touche, 0, mViewMatrix, 0, mRotationMatrix, 0);
+        // Calculate the projection and view transformation
+        Matrix.multiplyMM(mMVPMatrix, 0, mProjectionMatrix, 0, touche, 0);
         //mTriangle.draw();
-        mMountain.draw(touche);
+        mMountain.draw(mMVPMatrix);
     }
 
     public void onSurfaceChanged(GL10 unused, int width, int height) {

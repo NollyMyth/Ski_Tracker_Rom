@@ -8,32 +8,31 @@ public interface Shader {
 //            "uniform mat4 uMVMatrix;" +
             "attribute vec4 vPosition;" +
             "attribute vec4 vNormal;" +
-            "varying vec4 vColor;" +
-            "const vec4 lightPosition = vec4(0.0, -2.0, 0.0, 1.0);" +
+            "uniform vec4 vColor;" +
+            "varying vec4 aColor;" +
+            "const vec4 lightPosition = vec4(0.0, 0.0, 5.0, 1.0);" +
 
             "void main() {" +
-//            "vec3 modelViewVertex = vec3(u_MVMatrix * vPosition);" +
-//            "vec3 modelViewNormal = vec3(u_MVMatrix * vec4(vNormal, 0.0));" +
-//            "float distance = length(lightPosition - modelViewVertex);" +
-//            "vec4 lightVector = normalize(lightPosition - modelViewVertex);" +
-
-            "vec4 lightVector = normalize(lightPosition - vPosition);" +
-            "float lightDiffuse = max(dot(lightVector,vNormal),0.1);" +
-//            "lightDiffuse = diffuse * (1.0 / (1.0 + (0.25 * distance * distance)));" +
-            // the matrix must be included as a modifier of gl_Position
-            // Note that the uMVPMatrix factor *must be first* in order
-            // for the matrix multiplication product to be correct.
-             "vColor = vColor * lightDiffuse;" +
+            "vec4 lightVector = lightPosition - vPosition;" +
+            "float lightDiffuse = max(dot(lightVector,vNormal),0.01);" +
+               "    if (lightDiffuse > 0.0) {\n" +
+               "        aColor = vColor*lightDiffuse;\n" +
+               "    }\n" +
+               "    else {\n" +
+               "        aColor = vec4(0.0, 0.0, 0.0, 1.0);\n" +
+               "    }" +
+//          "aColor = vColor;" +
+                    // the matrix must be included as a modifier of gl_Position
+                    // Note that the uMVPMatrix factor *must be first* in order
+                    // for the matrix multiplication product to be correct.
              "gl_Position = uMVPMatrix*vPosition;" +
             "}";
 
 
      String fragmentShaderCode =
             "precision mediump float;" +
-//            "uniform vec4 vColor;" +
-            "varying vec4 vColor;" +
+            "varying vec4 aColor;" +
             "void main() {" +
-//            "gl_FragColor = vColor*lightDiffuse;" +
-                    "gl_FragColor = vColor;" +
+               "gl_FragColor = aColor;" +
             "}";
 }
