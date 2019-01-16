@@ -1,75 +1,92 @@
 package cc_ski_track.ski_tracker.Examples;
 
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.opengl.GLES20;
 import android.util.Log;
-import android.content.Context;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.util.ArrayList;
+import java.util.List;
 
 import cc_ski_track.ski_tracker.MyGLRenderer;
 import cc_ski_track.ski_tracker.R;
-import cc_ski_track.ski_tracker.Shader;
-import cc_ski_track.ski_tracker.Examples.Geometry.Vec3;
+import cc_ski_track.ski_tracker.Examples.Trace;
 
-public class Mountain implements Shader {
-    private FloatBuffer vertexBuffer;
-    private ShortBuffer drawListBuffer;
-    private FloatBuffer normalBuffer;
-    private int mMVMatrixHandle;
-    // Map Mountain
-    private static int Nc = 200; //largeur
-    private static int Nv = 200; //hauteur
-    private static float coords[] = new float[Nc*Nv*3];
+public class Mountain implements Shader{
+
+    private Context context;
+
+    /**constants. */
+    private static final int POSITION_DATA_SIZE_IN_ELEMENTS = 3;
+    private static final int NORMAL_DATA_SIZE_IN_ELEMENTS = 3;
+    private static final int COLOR_DATA_SIZE_IN_ELEMENTS = 4;
+    private static final int BYTES_PER_FLOAT = 4;
+    private static final int BYTES_PER_SHORT = 2;
+    private final int floatsPerVertex = POSITION_DATA_SIZE_IN_ELEMENTS + NORMAL_DATA_SIZE_IN_ELEMENTS
+            + COLOR_DATA_SIZE_IN_ELEMENTS;
+    private static final int STRIDE = (POSITION_DATA_SIZE_IN_ELEMENTS + NORMAL_DATA_SIZE_IN_ELEMENTS + COLOR_DATA_SIZE_IN_ELEMENTS)
+            * BYTES_PER_FLOAT;
+
+    /** Map global variable */
+    private static int Nc = 200;
+    private static int Nv = 200;
+    private final float[] heightMapVertexData = new float[Nc * Nv * floatsPerVertex];
     private static short drawOrders[] = new short[(Nc-1)*(Nv-1)*6];
-
-    // Map geometry
-    private static ArrayList<Vec3> verticies = new ArrayList<>();
-    private static float normals[] = new float[3*Nc*Nv];
-
-    // number of coordinates per vertex in this array
-    private static final int COORDS_PER_VERTEX = 3;
+    private final float[] lightPos = {0.0f,0.0f,-5.0f};
+    private final int[] vertice = new int[9];
+    /** VBO and IBO */
+    private final int[] vbo = new int[1];
+    private final int[] ibo = new int[1];
     // Set color with red, green, blue and alpha (opacity) values
-    private float color[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    private float color[] = { 1.0f, 0.0f, 0.0f, 1.0f };
 
-    // Use to access and set the view transformation
-    private static int mMVPMatrixHandle;
-
-    private final int mProgram;
-
-    /** Fonction qui crée un tableau avec les coordonnées des vertices pour une Bitmap définie
-     * @param icon
+    /**
+     * Generation of our map, basic plan with 1 vertices for each pixels of our height map
+     * @param map hieght map of the "Mont Blanc" (generated with terrain.party)
+     * @param normalmap normal map of our height map (generated with GIMP)
      */
-    private void generateTerrain(Bitmap icon) {
-        int taille = icon.getWidth();
-        int k = 0;
+    private void generateTerrain(Bitmap map, Bitmap normalmap) {
+        //Build height map data
+        int size = map.getWidth();
+        int length = normalmap.getWidth();
+//        String l = ":" + size;
+//        Log.d("Taille", l);
+        int offset = 0;
         for (int i = 0; i < Nv; i++) {
             for (int j = 0; j < Nc; j++) {
-                coords[k*3]=(-1 + (2*(float)j/(Nc-1)));                                       //Coordonnée en X
-                coords[k*3 + 1]=(1 - (2*(float)i/(Nv-1)));                                    //Coordonnée en Y
-                coords[k*3 + 2]= -2*(float)getIntensity(i*taille/Nc,j*taille/Nv,icon)/255;  //Coordonnée en Z
-                verticies.add(new Vec3(coords[k * 3],coords[k * 3 + 1],coords[k * 3 + 2]));
-                k++;
+                // Position
+                heightMapVertexData[offset++] = (-1 + (2 * (float) j / (Nc - 1))); // X coordinate
+                heightMapVertexData[offset++] = 1.0f-1.5f*(float)getIntensity(i*size/Nc,j*size/Nv,map)/255; // Y coordinate
+                heightMapVertexData[offset++] = (1.0f - (2 * (float) i / (Nv - 1)));  // Z coordinate
+
+                // Normal
+                float x = (float)(Color.red(normalmap.getPixel(i*length/Nc,j*length/Nv)))/255; // X coordinate
+                float y = (float)(Color.green(normalmap.getPixel(i*length/Nc,j*length/Nv)))/255; // Y coordinate
+                float z = (float)(Color.blue(normalmap.getPixel(i*length/Nc,j*length/Nv)))/255; // Z coordinate
+                heightMapVertexData[offset++] = x;
+                heightMapVertexData[offset++] = y;
+                heightMapVertexData[offset++] = z;
+
+                // Color
+                float c = (x+y+z)/3;
+                heightMapVertexData[offset++] = c;
+                heightMapVertexData[offset++] = c;
+                heightMapVertexData[offset++] = c;
+                heightMapVertexData[offset++] = 1.0f;
             }
         }
-        k=0;
-        for (int i = 0; i < Nv; i++) {
-            for (int j = 0; j < Nc; j++) {
-                normalMap(i, j, k);
-                k++;
-            }
-        }
+        // Build height map draw order indexes
         int n = 0;
-        for (int j = 0; j < Nv-1; j++) {
-            for (int i = 0; i < Nc-1; i++) {
+        for (int j = 0; j < Nv - 1; j++) {
+            for (int i = 0; i < Nc - 1; i++) {
                 // Romain le stremon
-                drawOrders[n * 6]     = (short) (i + j * Nc);
+                drawOrders[n * 6] = (short) (i + j * Nc);
                 drawOrders[n * 6 + 1] = (short) (Nc * j + i + 1);
                 drawOrders[n * 6 + 2] = (short) (Nc * j + i + Nc + 1);
                 drawOrders[n * 6 + 3] = (short) (Nc * j + i);
@@ -80,45 +97,20 @@ public class Mountain implements Shader {
         }
     }
 
-    /** Fonction qui la normale d'un vertex     */
-    private void normalMap(int i, int j, int n){
-        // On prend que les vertices centraux
-        if((i+j*Nc)>Nc && (i+j*Nc)<(Nv-1)*Nc-1 && (i+j*Nc)%Nc!=0 && (i+j*Nc)%Nc!=3) {
-            //vecteur entre vertex de gauche et de droite
-            Vec3 x = verticies.get(i - 1 + j * Nc).minus(verticies.get(i + 1 + j * Nc));
-            //vecteur entre vertex du haut et du bas
-            Vec3 y = verticies.get(i + (j - 1) * Nc).minus(verticies.get(i + (j + 1) * Nc));
-            // on calcule la normale suivant x
-            Vec3 nx = x.cross(new Vec3(0, 1, 0));
-            // on calcule la normale suivant x
-            Vec3 ny = y.cross(new Vec3(1, 0, 0));
-            // on fait la somme des deux
-            Vec3 vecNormal = nx.sum(ny);
-            vecNormal.normalize();
-            // on stocke les données dans un tableau pour le shader
-            normals[n * 3]     = vecNormal.x;
-            normals[n * 3 + 1] = vecNormal.y;
-            normals[n * 3 + 2] = vecNormal.z;
-
-            if(n%38974 == 0) {
-                String co =  n  + " \nx.x:" + x.x + "; x.y:" + x.y + "; x.z:" +x.z + "\n" +
-                         "y.x:" + y.x + "; y.y:" + y.y + "; y.z:" +y.z + "\n" +
-                         "nx.x:" + nx.x + "; nx.y:" + nx.y + "; nx.z:" +nx.z + "\n" +
-                         "ny.x:" + ny.x + "; ny.y:" + ny.y + "; ny.z:" +ny.z + "\n" +
-                         "vecNormal.x: " + vecNormal.x + "; vecNormal.y: " + vecNormal.y + "; vecNormal.z: " +vecNormal.z + "\n" +
-                         "normals[n*3]:" + normals[n * 3] + "; normals[n*3 + 1]:" + normals[n * 3 + 1] + "; normals[n*3+2]:" +normals[n * 3 + 2] + "\n";
-                Log.d("NORMALE", co);
+    private void dessineTrace(List<Double> longitude, List<Double> latitude){
+        for(int j = 0; j<longitude.size()-1; j++) {
+            double longi = longitude.get(j);
+            double lati = latitude.get(j);
+            int vertice[] = calculCoord(longi,lati);
+            for (int i = 0; i < 9; i++) {
+                heightMapVertexData[vertice[0] * 10 + 6] = 1; //vertice de i
+                heightMapVertexData[vertice[0] * 10 + 7] = 0;
+                heightMapVertexData[vertice[0] * 10 + 8] = 0;
+                i++;
             }
         }
-        else {
-            normals[n * 3] = 0;
-            normals[n * 3 + 1] = 0;
-            normals[n * 3 + 2] = 1;
-        }
-    }
 
-    /** Fonction qui prend l'intensité moyenne du pixel (x,y) d'une Bitmap
-     * qui sera ensuite utilisé comme hauteur */
+    }
     private int getIntensity(int X, int Y,Bitmap icon) {
         int pixel = icon.getPixel(X, Y);
         int redBucket = Color.red(pixel);
@@ -128,41 +120,76 @@ public class Mountain implements Shader {
         return (moyenne);
     }
 
+    private int[] calculCoord(double longi, double lati){
+        //Coordonnées du point haut droite
+        double longi1 = 6.545519;
+        double lati1 = 45.215488;
+        //Coordonnées du point bas gauche
+        double longi0 = 6.392493;
+        double lati0 = 45.107691;
+        //
+        double j = (longi - longi0)/(longi1 - longi0)*200;
+        double i = 200-(lati - lati1)/(lati0 - lati1)*200;
+        if ( i<0 && i>200 && j<0 && j>200){
+            Log.d("ERREUR","!!!!"+ i + j);
+        }
+        vertice[0]= (int)i     + (int)j*Nc;
+        vertice[1]= (int)(i-2) + (int)j*Nc;
+        vertice[2]= (int)(i-1) + (int)j*Nc;
+        vertice[3]= (int)i     + (int)(j-2)*Nc;
+        vertice[4]= (int)i     + (int)(j-1)*Nc;
+        vertice[5]= (int)(i+2) + (int)j*Nc;
+        vertice[6]= (int)(i+1) + (int)j*Nc;
+        vertice[7]= (int)i     + (int)(j+2)*Nc;
+        vertice[8]= (int)i     + (int)(j+1)*Nc;
+        return vertice;
+    }
 
+    private static int mMVPMatrixHandle;
+    private static int vMatrixHandle;
+    private static int mMatrixHandle;
+    private final int mProgram;
     /***********************************************************************************************/
-    public Mountain(Context context){
+    public Mountain(Context c){
+        this.context = c;
+        Trace matrace = new Trace(c);
+        /* Read à height map picture from our resources to generate our map */
+        Bitmap map = BitmapFactory.decodeResource(context.getResources(), R.drawable.val);
+        Bitmap normalmap = BitmapFactory.decodeResource(context.getResources(), R.drawable.normal);
+        generateTerrain(map, normalmap);
+        dessineTrace(matrace.longitude,matrace.latitude);
+        // initialize vertex byte buffer for shape coordinates, normals and colors
+        final FloatBuffer heightMapVertexDataBuffer = ByteBuffer
+                .allocateDirect(heightMapVertexData.length * BYTES_PER_FLOAT).order(ByteOrder.nativeOrder())
+                .asFloatBuffer();
+        heightMapVertexDataBuffer.put(heightMapVertexData).position(0);
+        // initialize byte buffer for the draw list
+        final ShortBuffer heightMapIndexDataBuffer = ByteBuffer
+                .allocateDirect(drawOrders.length * BYTES_PER_SHORT).order(ByteOrder.nativeOrder())
+                .asShortBuffer();
+        heightMapIndexDataBuffer.put(drawOrders).position(0);
 
-        Context c = context;
-        Bitmap icon = BitmapFactory.decodeResource(c.getResources(), R.drawable.valmeinier);
-        generateTerrain(icon);
-//        generateNormal();
+        // Generate vbo and ibo
+        GLES20.glGenBuffers(1, vbo, 0);
+        GLES20.glGenBuffers(1, ibo, 0);
+        if (vbo[0] > 0 && ibo[0] > 0) {
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo[0]);
+            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, heightMapVertexDataBuffer.capacity() * BYTES_PER_FLOAT,
+                    heightMapVertexDataBuffer, GLES20.GL_STATIC_DRAW);
 
-        // initialize NORMAL byte buffer for shape coordinates
-        ByteBuffer bb = ByteBuffer.allocateDirect(coords.length * 4); GLES20.glGetError();//  4 bytes per float
-        bb.order(ByteOrder.nativeOrder());
-        vertexBuffer = bb.asFloatBuffer(); GLES20.glGetError();
-        vertexBuffer.put(coords); GLES20.glGetError();
-        vertexBuffer.position(0); GLES20.glGetError();
+            GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, ibo[0]);
+            GLES20.glBufferData(GLES20.GL_ELEMENT_ARRAY_BUFFER, heightMapIndexDataBuffer.capacity()
+                    * BYTES_PER_SHORT, heightMapIndexDataBuffer, GLES20.GL_STATIC_DRAW);
 
-        // initialize VERTEX byte buffer for shape normals
-        ByteBuffer normalbuffer = ByteBuffer.allocateDirect(normals.length * 4); GLES20.glGetError();//  4 bytes per float
-        bb.order(ByteOrder.nativeOrder());
-        normalBuffer = normalbuffer.asFloatBuffer(); GLES20.glGetError();
-        normalBuffer.put(normals); GLES20.glGetError();
-        normalBuffer.position(0); GLES20.glGetError();
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+            GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, 0);
+        } else {
+            Log.d("ERREUR","!!!!");
+        }
 
-        // initialize byte buffer for the ORDER list
-        ByteBuffer dlb = ByteBuffer.allocateDirect(drawOrders.length * 2); GLES20.glGetError();//  2 bytes per short
-        dlb.order(ByteOrder.nativeOrder());
-        drawListBuffer = dlb.asShortBuffer();GLES20.glGetError();
-        drawListBuffer.put(drawOrders);GLES20.glGetError();
-        drawListBuffer.position(0);GLES20.glGetError();
-
-
-
-        int vertexShader = MyGLRenderer.loadShader(GLES20.GL_VERTEX_SHADER, Shader.vertexShaderCode);
-        int fragmentShader = MyGLRenderer.loadShader(GLES20.GL_FRAGMENT_SHADER,Shader.fragmentShaderCode);
-
+        // Initialized vertex and fragment shader
+        int vertexShader = MyGLRenderer.loadShader(GLES20.GL_VERTEX_SHADER, Shader.vertex_shader);
+        int fragmentShader = MyGLRenderer.loadShader(GLES20.GL_FRAGMENT_SHADER,Shader.fragment_shader);
         // create empty OpenGL ES Program
         mProgram = GLES20.glCreateProgram();
         // add the vertex shader to program
@@ -173,56 +200,56 @@ public class Mountain implements Shader {
         GLES20.glLinkProgram(mProgram);
     }
 
-    private static int mPositionHandle;
-    private static int mColorHandle;
-    private static int mNormalHandle;
-
-    private static final int vertexStride = COORDS_PER_VERTEX * 4; // 4 bytes per vertex
-
-    public void draw(float[] mvpMatrix) { // pass in the calculated transformation matrix
-
+    /** OpenGL handles to our program attributes. */
+    private int positionAttribute;
+    private int normalAttribute;
+    private int colorAttribute;
+    public void draw(float[] mvpMatrix, float[] vMatrix, float[] mMatrix) { // pass in the calculated transformation matrix
         // Add program to OpenGL ES environment
         GLES20.glUseProgram(mProgram);
-
         // get handle to vertex shader's vPosition member
-        mPositionHandle = GLES20.glGetAttribLocation(mProgram, "vPosition");
-        // Enable a handle to the triangle vertices
-        GLES20.glEnableVertexAttribArray(mPositionHandle);
-        // Prepare the triangle coordinate data
-        GLES20.glVertexAttribPointer(mPositionHandle, COORDS_PER_VERTEX,
-                GLES20.GL_FLOAT, false,
-                vertexStride, vertexBuffer);
+        positionAttribute = GLES20.glGetAttribLocation(mProgram, "vPosition");
+        normalAttribute = GLES20.glGetAttribLocation(mProgram,"vNormal");
+        colorAttribute = GLES20.glGetAttribLocation(mProgram, "vColor");
+        GLES20.glEnable(GLES20.GL_DEPTH_TEST);
+        GLES20.glDepthFunc(GLES20.GL_LEQUAL);
+        GLES20.glDepthMask(true);
+        if (vbo[0] > 0 && ibo[0] > 0) {
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, vbo[0]);
 
-        // get handle to vertex shader's vNormal member
-        mNormalHandle = GLES20.glGetAttribLocation(mProgram, "vNormal");
-        // Enable a handle to the triangle vertices
-        GLES20.glEnableVertexAttribArray(mNormalHandle);
-        // Prepare the triangle coordinate data
-        GLES20.glVertexAttribPointer(mNormalHandle, COORDS_PER_VERTEX,
-                GLES20.GL_FLOAT, false,
-                vertexStride, normalBuffer);
+            // Bind Attributes
+            GLES20.glVertexAttribPointer(positionAttribute, POSITION_DATA_SIZE_IN_ELEMENTS, GLES20.GL_FLOAT, false,
+                    STRIDE, 0); // Prepare the triangle coordinate data
+            GLES20.glEnableVertexAttribArray(positionAttribute); // Enable a handle to the triangle vertices
 
-//        mMVMatrixHandle = GLES20.glGetUniformLocation(mProgram, "uMVMatrix");
-//        GLES20.glUniformMatrix4fv(mMVMatrixHandle, 1, false, mvpMatrix, 0);
+            GLES20.glVertexAttribPointer(normalAttribute, NORMAL_DATA_SIZE_IN_ELEMENTS, GLES20.GL_FLOAT, false,
+                    STRIDE, POSITION_DATA_SIZE_IN_ELEMENTS * BYTES_PER_FLOAT);
+            GLES20.glEnableVertexAttribArray(normalAttribute);
 
+            GLES20.glVertexAttribPointer(colorAttribute, COLOR_DATA_SIZE_IN_ELEMENTS, GLES20.GL_FLOAT, false,
+                    STRIDE, (POSITION_DATA_SIZE_IN_ELEMENTS + NORMAL_DATA_SIZE_IN_ELEMENTS) * BYTES_PER_FLOAT);
+            GLES20.glEnableVertexAttribArray(colorAttribute);
 
-        // get handle to fragment shader's vColor member
-        mColorHandle = GLES20.glGetUniformLocation(mProgram, "vColor");
-        // Set color for drawing the triangle
-        GLES20.glUniform4fv(mColorHandle, 1, color, 0);
+            // Draw
+            GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, ibo[0]);
+            GLES20.glDrawElements(GLES20.GL_TRIANGLES, drawOrders.length, GLES20.GL_UNSIGNED_SHORT, 0);
+
+            GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
+            GLES20.glBindBuffer(GLES20.GL_ELEMENT_ARRAY_BUFFER, 0);
+        }
 
         // get handle to shape's transformation matrix
         mMVPMatrixHandle = GLES20.glGetUniformLocation(mProgram, "uMVPMatrix");
         // Pass the projection and view transformation to the shader
         GLES20.glUniformMatrix4fv(mMVPMatrixHandle, 1, false, mvpMatrix, 0);
-        // Draw the triangles
-
-        GLES20.glDrawElements(GLES20.GL_TRIANGLES, drawOrders.length,
-                GLES20.GL_UNSIGNED_SHORT, drawListBuffer ); GLES20.glGetError();
-
+        vMatrixHandle = GLES20.glGetUniformLocation(mProgram, "V");
+        GLES20.glUniformMatrix4fv(vMatrixHandle, 1, false, vMatrix, 0);
+        mMatrixHandle = GLES20.glGetUniformLocation(mProgram, "M");
+        GLES20.glUniformMatrix4fv(mMatrixHandle, 1, false, mMatrix, 0);
         // Disable vertex array
-        GLES20.glDisableVertexAttribArray(mPositionHandle);
+        GLES20.glDisableVertexAttribArray(positionAttribute);
+        GLES20.glDisableVertexAttribArray(normalAttribute);
+        GLES20.glDisableVertexAttribArray(colorAttribute);
+
     }
-
-
 }
